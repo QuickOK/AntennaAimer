@@ -51,8 +51,8 @@ class ArOverlayView @JvmOverloads constructor(
     var optimalBoresight: Float = 0f
     var wantedSiteBearing: Float = 0f
     var wantedSiteLabel: String = ""
-    var currentMarginDb: Float = 0f
-    var naiveMarginDb: Float = 0f
+    var currentMarginDb: Float? = null
+    var naiveMarginDb: Float? = null
     var interfererOverlayData: List<InterfererOverlay> = emptyList()
 
     var tripodScaleOffset: Double? = null
@@ -108,6 +108,52 @@ class ArOverlayView @JvmOverloads constructor(
     }
 
     private val arrowPath = Path()
+
+    // Reusable Paint/Path objects for drawing methods (avoid allocations in onDraw)
+    private val compassTickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        strokeWidth = 2f
+    }
+
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.GREEN
+    }
+
+    private val beamStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        color = Color.argb(80, 0, 255, 0)
+    }
+
+    private val beamFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(20, 0, 255, 0)
+    }
+
+    private val interfererMarkerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        strokeWidth = 3f
+        style = Paint.Style.STROKE
+    }
+
+    private val interfererLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 24f
+        setShadowLayer(3f, 1f, 1f, Color.BLACK)
+    }
+
+    private val interfererPath = Path()
+
+    private val marginPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 32f
+        setShadowLayer(3f, 1f, 1f, Color.BLACK)
+    }
+
+    private val boresightDiamondPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.GREEN
+        style = Paint.Style.FILL
+    }
+
+    private val boresightDiamondPath = Path()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -225,10 +271,6 @@ class ArOverlayView @JvmOverloads constructor(
 
         // Inner dot when close to aligned
         if (offset < alignedThreshold) {
-            val dotPaint = Paint(crosshairPaint).apply {
-                style = Paint.Style.FILL
-                color = Color.GREEN
-            }
             canvas.drawCircle(x, y, 8f, dotPaint)
         }
 
@@ -343,11 +385,7 @@ class ArOverlayView @JvmOverloads constructor(
             }
         }
 
-        val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            strokeWidth = 2f
-        }
-        canvas.drawLine(width / 2f, stripY + 5f, width / 2f, stripY + 30f, tickPaint)
+        canvas.drawLine(width / 2f, stripY + 5f, width / 2f, stripY + 30f, compassTickPaint)
     }
 
     private fun drawWaitingMessage(canvas: Canvas) {
@@ -400,31 +438,23 @@ class ArOverlayView @JvmOverloads constructor(
                 else -> 0xFFCC0000.toInt() // in main lobe — red
             }
 
-            val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = markerColor
-                strokeWidth = 3f
-                style = Paint.Style.STROKE
-            }
+            interfererMarkerPaint.color = markerColor
 
             // Draw diamond marker
             val sz = 30f
-            val path = Path()
-            path.moveTo(screenX, screenY - sz)
-            path.lineTo(screenX + sz * 0.6f, screenY)
-            path.lineTo(screenX, screenY + sz)
-            path.lineTo(screenX - sz * 0.6f, screenY)
-            path.close()
-            canvas.drawPath(path, markerPaint)
+            interfererPath.reset()
+            interfererPath.moveTo(screenX, screenY - sz)
+            interfererPath.lineTo(screenX + sz * 0.6f, screenY)
+            interfererPath.lineTo(screenX, screenY + sz)
+            interfererPath.lineTo(screenX - sz * 0.6f, screenY)
+            interfererPath.close()
+            canvas.drawPath(interfererPath, interfererMarkerPaint)
 
             // Label and gain
-            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = markerColor
-                textSize = 24f
-                setShadowLayer(3f, 1f, 1f, Color.BLACK)
-            }
+            interfererLabelPaint.color = markerColor
             val gainText = String.format("%.0f dB", interferer.relGainDb)
-            canvas.drawText(interferer.label, screenX - labelPaint.measureText(interferer.label) / 2, screenY - sz - 24, labelPaint)
-            canvas.drawText(gainText, screenX - labelPaint.measureText(gainText) / 2, screenY - sz - 4, labelPaint)
+            canvas.drawText(interferer.label, screenX - interfererLabelPaint.measureText(interferer.label) / 2, screenY - sz - 24, interfererLabelPaint)
+            canvas.drawText(gainText, screenX - interfererLabelPaint.measureText(gainText) / 2, screenY - sz - 4, interfererLabelPaint)
         }
     }
 
@@ -437,63 +467,53 @@ class ArOverlayView @JvmOverloads constructor(
 
         if (abs(offset) < horizontalFov / 2f + 10f) {
             val screenX = width / 2f + offset * pixelsPerDegree
-            val diamondPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.GREEN
-                style = Paint.Style.FILL
-            }
-            val path = Path()
-            path.moveTo(screenX, stripY + 22f)
-            path.lineTo(screenX - 6f, stripY + 34f)
-            path.lineTo(screenX + 6f, stripY + 34f)
-            path.close()
-            canvas.drawPath(path, diamondPaint)
+            boresightDiamondPath.reset()
+            boresightDiamondPath.moveTo(screenX, stripY + 22f)
+            boresightDiamondPath.lineTo(screenX - 6f, stripY + 34f)
+            boresightDiamondPath.lineTo(screenX + 6f, stripY + 34f)
+            boresightDiamondPath.close()
+            canvas.drawPath(boresightDiamondPath, boresightDiamondPaint)
         }
     }
 
     private fun drawMarginHud(canvas: Canvas) {
+        val margin = currentMarginDb ?: return  // no margin to display (no interferers)
         val x = width / 2f
         val y = height - 30f
 
-        val marginColor = if (currentMarginDb > 0) Color.GREEN else Color.RED
-        val marginPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = marginColor
-            textSize = 32f
-            setShadowLayer(3f, 1f, 1f, Color.BLACK)
-        }
+        val marginColor = if (margin > 0) Color.GREEN else Color.RED
+        marginPaint.color = marginColor
+        marginPaint.textSize = 32f
 
-        val marginText = String.format("Margin: %+.1f dB", currentMarginDb)
+        val marginText = String.format("Margin: %+.1f dB", margin)
         canvas.drawText(marginText, x - marginPaint.measureText(marginText) / 2, y, marginPaint)
 
-        val improvement = currentMarginDb - naiveMarginDb
-        if (abs(improvement) > 0.5f) {
-            marginPaint.textSize = 26f
-            marginPaint.color = Color.argb(180, 200, 200, 200)
-            val impText = String.format("vs naive: %+.1f dB", improvement)
-            canvas.drawText(impText, x - marginPaint.measureText(impText) / 2, y - 36f, marginPaint)
+        val naive = naiveMarginDb
+        if (naive != null) {
+            val improvement = margin - naive
+            if (abs(improvement) > 0.5f) {
+                marginPaint.textSize = 26f
+                marginPaint.color = Color.argb(180, 200, 200, 200)
+                val impText = String.format("vs naive: %+.1f dB", improvement)
+                canvas.drawText(impText, x - marginPaint.measureText(impText) / 2, y - 36f, marginPaint)
+            }
         }
     }
 
     private fun drawBeamwidth(canvas: Canvas, targetX: Float, targetY: Float, ppdH: Float, ppdV: Float) {
-        val beamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2f
-            color = Color.argb(80, 0, 255, 0)
-        }
-        val beamFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.argb(20, 0, 255, 0)
-        }
         val radiusH = (beamwidthDegrees / 2f) * ppdH
         val radiusV = (beamwidthDegrees / 2f) * ppdV
 
         canvas.drawOval(targetX - radiusH, targetY - radiusV, targetX + radiusH, targetY + radiusV, beamFillPaint)
-        canvas.drawOval(targetX - radiusH, targetY - radiusV, targetX + radiusH, targetY + radiusV, beamPaint)
+        canvas.drawOval(targetX - radiusH, targetY - radiusV, targetX + radiusH, targetY + radiusV, beamStrokePaint)
 
         // Label
-        beamPaint.textSize = 24f
-        beamPaint.color = Color.argb(150, 0, 255, 0)
+        beamStrokePaint.textSize = 24f
+        beamStrokePaint.color = Color.argb(150, 0, 255, 0)
         val bwLabel = String.format("-3dB: %.0f\u00B0", beamwidthDegrees)
-        canvas.drawText(bwLabel, targetX - beamPaint.measureText(bwLabel) / 2, targetY + radiusV + 20, beamPaint)
+        canvas.drawText(bwLabel, targetX - beamStrokePaint.measureText(bwLabel) / 2, targetY + radiusV + 20, beamStrokePaint)
+        // Reset for next frame
+        beamStrokePaint.color = Color.argb(80, 0, 255, 0)
     }
 
     private fun drawDriftWarning(canvas: Canvas) {

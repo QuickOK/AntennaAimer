@@ -27,7 +27,8 @@ object BoresightOptimizer {
         val offsetFromWanted: Double,
         val wantedRelGainDb: Double,
         val interfererDetails: List<InterfererDetail>,
-        val marginDb: Double
+        val marginDb: Double?,
+        val erpWeightingUsed: Boolean = false
     )
 
     /**
@@ -38,7 +39,7 @@ object BoresightOptimizer {
         val wanted = sites.firstOrNull { it.role == SiteRole.WANTED } ?: return emptyList()
         val interferers = sites.filter { it.role == SiteRole.INTERFERER }
         if (interferers.isEmpty()) {
-            // No interferers — just point at the wanted site
+            // No interferers — just point at the wanted site; margin is null
             val sol = score(wanted.bearingTrue, sites, profile)
             return listOf(sol)
         }
@@ -50,7 +51,7 @@ object BoresightOptimizer {
         for (i in 0 until stepCount) {
             val heading = i * 0.25
             val sol = score(heading, sites, profile)
-            scores[i] = sol.marginDb
+            scores[i] = sol.marginDb ?: Double.NEGATIVE_INFINITY
             solutions[i] = sol
         }
 
@@ -60,25 +61,32 @@ object BoresightOptimizer {
             if (scores[i] > scores[bestIdx]) bestIdx = i
         }
 
-        // Find local maxima (peaks higher than both neighbors, within 6 dB of best)
-        val localMaxima = mutableListOf<Int>()
+        // Collect ALL candidate peaks first (higher than both neighbors, within 6 dB of best)
+        val candidates = mutableListOf<Int>()
         val threshold = scores[bestIdx] - 6.0
         for (i in 0 until stepCount) {
             if (i == bestIdx) continue
             val prev = if (i == 0) stepCount - 1 else i - 1
             val next = if (i == stepCount - 1) 0 else i + 1
             if (scores[i] > scores[prev] && scores[i] > scores[next] && scores[i] >= threshold) {
-                // Skip if too close to an already-found peak (within 5°)
-                val heading = i * 0.25
-                val tooClose = localMaxima.any { abs(angleDiff(heading, it * 0.25)) < 5.0 }
-                if (!tooClose) {
-                    localMaxima.add(i)
-                }
+                candidates.add(i)
             }
         }
 
-        // Sort local maxima by score descending, take top 3
-        localMaxima.sortByDescending { scores[it] }
+        // Sort ALL candidates by score descending, then suppress nearby peaks
+        candidates.sortByDescending { scores[it] }
+        val localMaxima = mutableListOf<Int>()
+        for (c in candidates) {
+            val heading = c * 0.25
+            val bestHeading = bestIdx * 0.25
+            // Skip if too close to the best or any already-accepted peak (within 5 deg)
+            val tooClose = abs(angleDiff(heading, bestHeading)) < 5.0 ||
+                localMaxima.any { abs(angleDiff(heading, it * 0.25)) < 5.0 }
+            if (!tooClose) {
+                localMaxima.add(c)
+            }
+        }
+
         val topAlternatives = localMaxima.take(3)
 
         val result = mutableListOf(solutions[bestIdx]!!)
@@ -91,8 +99,12 @@ object BoresightOptimizer {
      */
     fun score(candidateHeading: Double, sites: List<SiteGeometry>, profile: AntennaProfile): Solution {
         val wanted = sites.firstOrNull { it.role == SiteRole.WANTED }
-            ?: return Solution(candidateHeading, 0.0, 0.0, emptyList(), 0.0)
+            ?: return Solution(candidateHeading, 0.0, 0.0, emptyList(), null)
         val interferers = sites.filter { it.role == SiteRole.INTERFERER }
+
+        // If any active site (wanted + interferers) lacks ERP, disable path weighting for all
+        val allActiveSites = listOf(wanted) + interferers
+        val erpAvailable = allActiveSites.all { it.erpW != null && it.erpW > 0.0 }
 
         val wantedOffAxis = angleDiff(wanted.bearingTrue, candidateHeading)
         val wantedGain = profile.gainAt(wantedOffAxis)
@@ -100,7 +112,11 @@ object BoresightOptimizer {
         val details = interferers.map { interferer ->
             val offAxis = angleDiff(interferer.bearingTrue, candidateHeading)
             val patternGain = profile.gainAt(offAxis)
-            val pt = pathTerm(interferer.erpW, interferer.distanceM, wanted.erpW, wanted.distanceM)
+            val pt = if (erpAvailable) {
+                pathTerm(interferer.erpW, interferer.distanceM, wanted.erpW, wanted.distanceM)
+            } else {
+                0.0
+            }
 
             InterfererDetail(
                 label = interferer.label,
@@ -111,15 +127,21 @@ object BoresightOptimizer {
             )
         }
 
-        val worstInterferer = details.maxByOrNull { it.relGainDb }?.relGainDb ?: -999.0
-        val margin = wantedGain - worstInterferer
+        // When no interferers, margin is null
+        val margin: Double? = if (details.isEmpty()) {
+            null
+        } else {
+            val worstInterferer = details.maxOf { it.relGainDb }
+            wantedGain - worstInterferer
+        }
 
         return Solution(
             boresightTrue = candidateHeading,
             offsetFromWanted = angleDiff(candidateHeading, wanted.bearingTrue),
             wantedRelGainDb = wantedGain,
             interfererDetails = details,
-            marginDb = margin
+            marginDb = margin,
+            erpWeightingUsed = erpAvailable
         )
     }
 

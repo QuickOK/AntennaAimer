@@ -108,18 +108,31 @@ class InterferenceSetupActivity : AppCompatActivity() {
     private fun fetchLocation() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
             == PackageManager.PERMISSION_GRANTED) {
-            com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this)
-                .lastLocation.addOnSuccessListener { location ->
+            val client = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this)
+            client.lastLocation.addOnSuccessListener { location ->
                     if (location != null) {
-                        observerLat = location.latitude
-                        observerLon = location.longitude
-                        observerAlt = location.altitude
-                        findViewById<TextView>(R.id.observerCoords).text =
-                            "${CoordinateParser.formatLatitude(observerLat)}, ${CoordinateParser.formatLongitude(observerLon)}  alt: ${observerAlt.toInt()}m"
-                        siteAdapter.notifyDataSetChanged()
+                        applyLocation(location)
+                    } else {
+                        // Cached location is null; request a single fresh fix
+                        client.getCurrentLocation(
+                            com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, null
+                        ).addOnSuccessListener { freshLocation ->
+                            if (freshLocation != null) {
+                                applyLocation(freshLocation)
+                            }
+                        }
                     }
                 }
         }
+    }
+
+    private fun applyLocation(location: android.location.Location) {
+        observerLat = location.latitude
+        observerLon = location.longitude
+        observerAlt = location.altitude
+        findViewById<TextView>(R.id.observerCoords).text =
+            "${CoordinateParser.formatLatitude(observerLat)}, ${CoordinateParser.formatLongitude(observerLon)}  alt: ${observerAlt.toInt()}m"
+        siteAdapter.notifyDataSetChanged()
     }
 
     private fun showAddSiteDialog() {
@@ -147,8 +160,16 @@ class InterferenceSetupActivity : AppCompatActivity() {
                 val label = getText(labelField).ifEmpty { "Site ${sites.size + 1}" }
                 val lat = getCoordText(latRow).toDoubleOrNull()
                 val lon = getCoordText(lonRow).toDoubleOrNull()
-                if (lat == null || lon == null) {
+                if (lat == null || lon == null || !lat.isFinite() || !lon.isFinite()) {
                     Toast.makeText(this, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (lat < -90.0 || lat > 90.0) {
+                    Toast.makeText(this, "Latitude must be between -90 and 90", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (lon < -180.0 || lon > 180.0) {
+                    Toast.makeText(this, "Longitude must be between -180 and 180", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 sites.add(Site(
@@ -190,10 +211,24 @@ class InterferenceSetupActivity : AppCompatActivity() {
             .setTitle("Edit Site")
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
+                val newLat = getCoordText(latRow).toDoubleOrNull() ?: site.latitude
+                val newLon = getCoordText(lonRow).toDoubleOrNull() ?: site.longitude
+                if (!newLat.isFinite() || !newLon.isFinite()) {
+                    Toast.makeText(this, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (newLat < -90.0 || newLat > 90.0) {
+                    Toast.makeText(this, "Latitude must be between -90 and 90", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (newLon < -180.0 || newLon > 180.0) {
+                    Toast.makeText(this, "Longitude must be between -180 and 180", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
                 sites[position] = site.copy(
                     label = getText(labelField).ifEmpty { site.label },
-                    latitude = getCoordText(latRow).toDoubleOrNull() ?: site.latitude,
-                    longitude = getCoordText(lonRow).toDoubleOrNull() ?: site.longitude,
+                    latitude = newLat,
+                    longitude = newLon,
                     groundElevationM = getText(elevField).toDoubleOrNull() ?: site.groundElevationM,
                     antennaHeightM = getText(heightField).toDoubleOrNull() ?: site.antennaHeightM,
                     erpW = getText(erpField).toDoubleOrNull()
@@ -295,9 +330,13 @@ class InterferenceSetupActivity : AppCompatActivity() {
         sb.appendLine("OPTIMAL HEADING: ${String.format("%.1f", best.boresightTrue)}\u00B0 ${GeoCalculator.bearingToCompass(best.boresightTrue)}")
         sb.appendLine("Offset from wanted: ${String.format("%+.1f", best.offsetFromWanted)}\u00B0")
         sb.appendLine("Wanted gain: ${String.format("%.1f", best.wantedRelGainDb)} dB")
-        sb.appendLine("Margin: ${String.format("%.1f", best.marginDb)} dB")
+        if (best.marginDb != null) {
+            sb.appendLine("Margin: ${String.format("%.1f", best.marginDb)} dB")
+        } else {
+            sb.appendLine("Margin: N/A (no interferers)")
+        }
 
-        if (naive != null) {
+        if (naive != null && best.marginDb != null && naive.marginDb != null) {
             val improvement = best.marginDb - naive.marginDb
             sb.appendLine()
             sb.appendLine("NAIVE (point at wanted): ${String.format("%.1f", naive.boresightTrue)}\u00B0")
@@ -320,7 +359,8 @@ class InterferenceSetupActivity : AppCompatActivity() {
             sb.appendLine("ALTERNATIVES:")
             for (i in 1 until solutions.size) {
                 val alt = solutions[i]
-                sb.appendLine("  ${String.format("%.1f", alt.boresightTrue)}\u00B0 margin: ${String.format("%.1f", alt.marginDb)} dB")
+                val altMarginStr = if (alt.marginDb != null) String.format("%.1f", alt.marginDb) else "N/A"
+                sb.appendLine("  ${String.format("%.1f", alt.boresightTrue)}\u00B0 margin: $altMarginStr dB")
             }
         }
 
@@ -413,9 +453,7 @@ class InterferenceSetupActivity : AppCompatActivity() {
         }
         val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
             if (value.isNotEmpty()) setText(value)
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or
-                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
         }
         inputLayout.addView(editText)
 
@@ -514,9 +552,19 @@ class SiteAdapter(
             val erpStr = if (site.erpW != null) "  ERP: ${site.erpW.toInt()}W" else ""
             detailsView.text = "$coords$distStr$erpStr"
 
-            roleView.setOnClickListener { onRoleToggle(position) }
-            deleteBtn.setOnClickListener { onDelete(position) }
-            itemView.setOnLongClickListener { onEdit(position); true }
+            roleView.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) onRoleToggle(pos)
+            }
+            deleteBtn.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) onDelete(pos)
+            }
+            itemView.setOnLongClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) onEdit(pos)
+                true
+            }
         }
     }
 }

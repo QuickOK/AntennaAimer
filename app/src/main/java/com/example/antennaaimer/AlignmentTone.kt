@@ -3,20 +3,23 @@ package com.example.antennaaimer
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.sin
 
 class AlignmentTone {
 
     private var audioTrack: AudioTrack? = null
-    private var isPlaying = false
-    private var playThread: Thread? = null
+    private var audioThread: Thread? = null
+    private val running = AtomicBoolean(false)
+    private val currentOffset = AtomicReference(Float.MAX_VALUE)
     var enabled = true
 
     private val sampleRate = 44100
 
     fun start() {
-        if (isPlaying) return
-        isPlaying = true
+        if (running.get()) return
+        running.set(true)
 
         val bufferSize = AudioTrack.getMinBufferSize(
             sampleRate,
@@ -24,7 +27,7 @@ class AlignmentTone {
             AudioFormat.ENCODING_PCM_16BIT
         )
 
-        audioTrack = AudioTrack.Builder()
+        val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -42,58 +45,56 @@ class AlignmentTone {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
-        audioTrack?.play()
+        audioTrack = track
+        track.play()
+
+        // Single dedicated thread for all audio writes
+        audioThread = Thread {
+            while (running.get()) {
+                if (!enabled) {
+                    Thread.sleep(100)
+                    continue
+                }
+
+                val offset = currentOffset.get()
+                when {
+                    offset < 1f -> playBeep(track, 1200f, 200, 0)
+                    offset < 3f -> playBeep(track, 1000f, 80, 80)
+                    offset < 10f -> playBeep(track, 800f, 100, 200)
+                    offset < 30f -> playBeep(track, 600f, 100, 500)
+                    offset < 60f -> playBeep(track, 400f, 100, 1000)
+                    else -> Thread.sleep(200)
+                }
+            }
+        }.apply {
+            name = "AlignmentTone"
+            isDaemon = true
+            start()
+        }
     }
 
     fun stop() {
-        isPlaying = false
-        playThread?.interrupt()
-        playThread = null
-        audioTrack?.stop()
-        audioTrack?.release()
+        running.set(false)
+        audioThread?.join(500)
+        audioThread = null
+        try {
+            audioTrack?.stop()
+            audioTrack?.release()
+        } catch (_: Exception) {}
         audioTrack = null
     }
 
     /**
-     * Play a beep pattern based on how far off-target we are.
-     * @param offsetDegrees total angular offset from target in degrees
+     * Update the current offset. Called from any thread — just sets an atomic value.
+     * The audio thread reads it on its own schedule.
      */
     fun updateAlignment(offsetDegrees: Float) {
-        if (!enabled || !isPlaying) return
-
-        val track = audioTrack ?: return
-
-        // Determine beep parameters based on offset
-        when {
-            offsetDegrees < 1f -> {
-                // Locked on — continuous high tone
-                playBeep(track, frequency = 1200f, durationMs = 200, silenceMs = 0)
-            }
-            offsetDegrees < 3f -> {
-                // Very close — fast beeps
-                playBeep(track, frequency = 1000f, durationMs = 80, silenceMs = 80)
-            }
-            offsetDegrees < 10f -> {
-                // Close — medium beeps
-                playBeep(track, frequency = 800f, durationMs = 100, silenceMs = 200)
-            }
-            offsetDegrees < 30f -> {
-                // Getting warmer — slow beeps
-                playBeep(track, frequency = 600f, durationMs = 100, silenceMs = 500)
-            }
-            offsetDegrees < 60f -> {
-                // Far — very slow beeps
-                playBeep(track, frequency = 400f, durationMs = 100, silenceMs = 1000)
-            }
-            else -> {
-                // Way off — silence
-                writeSilence(track, 200)
-            }
-        }
+        currentOffset.set(offsetDegrees)
     }
 
     private fun playBeep(track: AudioTrack, frequency: Float, durationMs: Int, silenceMs: Int) {
-        val numSamples = (sampleRate * durationMs / 1000)
+        if (!running.get()) return
+        val numSamples = sampleRate * durationMs / 1000
         val buffer = ShortArray(numSamples)
         for (i in 0 until numSamples) {
             val angle = 2.0 * Math.PI * frequency * i / sampleRate
@@ -101,14 +102,9 @@ class AlignmentTone {
         }
         track.write(buffer, 0, buffer.size)
 
-        if (silenceMs > 0) {
-            writeSilence(track, silenceMs)
+        if (silenceMs > 0 && running.get()) {
+            val silenceSamples = sampleRate * silenceMs / 1000
+            track.write(ShortArray(silenceSamples), 0, silenceSamples)
         }
-    }
-
-    private fun writeSilence(track: AudioTrack, durationMs: Int) {
-        val numSamples = (sampleRate * durationMs / 1000)
-        val silence = ShortArray(numSamples)
-        track.write(silence, 0, silence.size)
     }
 }

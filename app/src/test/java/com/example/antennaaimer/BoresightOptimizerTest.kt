@@ -138,7 +138,8 @@ class BoresightOptimizerTest {
             abs(best.offsetFromWanted) > 0.5)
 
         // The margin should be positive (wanted beats interferer)
-        assertTrue("Margin should be positive", best.marginDb > 0)
+        assertNotNull("Margin should not be null when interferers exist", best.marginDb)
+        assertTrue("Margin should be positive", best.marginDb!! > 0)
     }
 
     @Test
@@ -159,8 +160,10 @@ class BoresightOptimizerTest {
         // Naive: point straight at wanted
         val naive = BoresightOptimizer.score(bearing3, sites, profile)
 
+        assertNotNull("Optimal margin should not be null", optimal.marginDb)
+        assertNotNull("Naive margin should not be null", naive.marginDb)
         assertTrue("Optimal margin should be >= naive margin",
-            optimal.marginDb >= naive.marginDb)
+            optimal.marginDb!! >= naive.marginDb!!)
     }
 
     @Test

@@ -1,5 +1,13 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
+}
+
+val localProps = Properties()
+rootProject.file("local.properties").let { f ->
+    if (f.exists()) FileInputStream(f).use { localProps.load(it) }
 }
 
 android {
@@ -19,9 +27,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("../antenna-aimer-release.jks")
-            storePassword = "antennaaimer123"
-            keyAlias = "antennaaimer"
-            keyPassword = "antennaaimer123"
+            storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD", "")
+            keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS", "")
+            keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD", "")
         }
     }
 
@@ -34,6 +42,9 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
+    }
+    buildFeatures {
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

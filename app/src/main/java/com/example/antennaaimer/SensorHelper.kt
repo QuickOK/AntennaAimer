@@ -31,6 +31,8 @@ class SensorHelper(
 
     private var rawAzimuth = 0f
     private var logCount = 0
+    var headingAccuracyRad: Float = -1f
+        private set
 
     fun start() {
         val rotVec = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -76,6 +78,11 @@ class SensorHelper(
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR &&
             event.sensor.type != Sensor.TYPE_GAME_ROTATION_VECTOR) return
+
+        // Read estimated heading accuracy when available (TYPE_ROTATION_VECTOR, values[4])
+        if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR && event.values.size > 4) {
+            headingAccuracyRad = event.values[4]
+        }
 
         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
 

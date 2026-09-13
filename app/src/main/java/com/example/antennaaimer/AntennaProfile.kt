@@ -10,6 +10,15 @@ data class AntennaProfile(
     val hpbwDeg: Double,
     val azimuthPatternDb: DoubleArray // 19 entries: 0°, 10°, 20° ... 180°
 ) {
+    init {
+        require(azimuthPatternDb.size == 19) {
+            "azimuthPatternDb must have exactly 19 entries (0° to 180° in 10° steps), got ${azimuthPatternDb.size}"
+        }
+        require(azimuthPatternDb.all { it.isFinite() }) {
+            "azimuthPatternDb must contain only finite values"
+        }
+    }
+
     /**
      * Interpolated relative gain in dB for any off-axis angle.
      * Input is normalized to [0, 180] (mirrored for negative angles).

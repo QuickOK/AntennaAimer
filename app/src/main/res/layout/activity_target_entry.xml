@@ -62,7 +62,7 @@
                     android:id="@+id/editLatitude"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="numberDecimal|numberSigned"
+                    android:inputType="text"
                     android:textColor="@android:color/white"
                     android:textSize="16sp" />
             </com.google.android.material.textfield.TextInputLayout>
@@ -126,7 +126,7 @@
                     android:id="@+id/editLongitude"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="numberDecimal|numberSigned"
+                    android:inputType="text"
                     android:textColor="@android:color/white"
                     android:textSize="16sp" />
             </com.google.android.material.textfield.TextInputLayout>
@@ -309,7 +309,7 @@
                     android:id="@+id/editCalLat"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="numberDecimal|numberSigned"
+                    android:inputType="text"
                     android:textColor="@android:color/white"
                     android:textSize="14sp" />
             </com.google.android.material.textfield.TextInputLayout>
@@ -337,7 +337,7 @@
                     android:id="@+id/editCalLon"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="numberDecimal|numberSigned"
+                    android:inputType="text"
                     android:textColor="@android:color/white"
                     android:textSize="14sp" />
             </com.google.android.material.textfield.TextInputLayout>

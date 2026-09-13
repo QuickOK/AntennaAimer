@@ -26,7 +26,9 @@ class LocationHelper(context: Context) {
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let { location ->
-                Log.d(TAG, "Location update: ${location.latitude}, ${location.longitude}, alt=${location.altitude}, bearing=${location.bearing}, hasBearing=${location.hasBearing()}")
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "Location update: ${location.latitude}, ${location.longitude}, alt=${location.altitude}, bearing=${location.bearing}, hasBearing=${location.hasBearing()}")
+                }
                 listener?.onLocationChanged(
                     location.latitude,
                     location.longitude,
@@ -44,7 +46,9 @@ class LocationHelper(context: Context) {
 
         fusedLocationClient.lastLocation.addOnSuccessListener { location ->
             if (location != null) {
-                Log.d(TAG, "Last known location: ${location.latitude}, ${location.longitude}")
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "Last known location: ${location.latitude}, ${location.longitude}")
+                }
                 listener?.onLocationChanged(
                     location.latitude,
                     location.longitude,

@@ -332,9 +332,7 @@ class TargetEntryActivity : AppCompatActivity() {
         }
         val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
             setText(value)
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or
-                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
         }
         inputLayout.addView(editText)
 

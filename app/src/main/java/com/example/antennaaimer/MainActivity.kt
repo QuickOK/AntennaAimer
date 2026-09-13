@@ -184,6 +184,11 @@ class MainActivity : AppCompatActivity(), SensorHelper.OrientationListener, Loca
         checkPermissions()
     }
 
+    override fun onDestroy() {
+        android.util.Log.e("AntennaAimer.Main", "onDestroy called", Exception("Stack trace"))
+        super.onDestroy()
+    }
+
     private fun performCalibration() {
         if (!arOverlay.hasLocation) {
             Toast.makeText(this, "Waiting for GPS fix...", Toast.LENGTH_SHORT).show()
@@ -281,8 +286,10 @@ class MainActivity : AppCompatActivity(), SensorHelper.OrientationListener, Loca
                 object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
                     override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
                         val cam = camera ?: return false
-                        val currentZoom = cam.cameraInfo.zoomState.value?.zoomRatio ?: 1f
-                        val newZoom = currentZoom * detector.scaleFactor
+                        val zoomState = cam.cameraInfo.zoomState.value ?: return false
+                        val currentZoom = zoomState.zoomRatio
+                        val newZoom = (currentZoom * detector.scaleFactor)
+                            .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
                         cam.cameraControl.setZoomRatio(newZoom)
 
                         val baseHFov = 67f
@@ -355,7 +362,7 @@ class MainActivity : AppCompatActivity(), SensorHelper.OrientationListener, Loca
             val profile = interferenceProfile
             if (profile != null && interferenceGeometries.isNotEmpty()) {
                 val currentSolution = BoresightOptimizer.score(azimuth.toDouble(), interferenceGeometries, profile)
-                arOverlay.currentMarginDb = currentSolution.marginDb.toFloat()
+                arOverlay.currentMarginDb = currentSolution.marginDb?.toFloat()
                 arOverlay.interfererOverlayData = currentSolution.interfererDetails.map { d ->
                     ArOverlayView.InterfererOverlay(d.label, d.bearingTrue.toFloat(), d.offAxisDeg.toFloat(), d.relGainDb.toFloat())
                 }
@@ -364,7 +371,7 @@ class MainActivity : AppCompatActivity(), SensorHelper.OrientationListener, Loca
                 val wanted = interferenceGeometries.firstOrNull { it.role == SiteRole.WANTED }
                 if (wanted != null) {
                     val naiveSol = BoresightOptimizer.score(wanted.bearingTrue, interferenceGeometries, profile)
-                    arOverlay.naiveMarginDb = naiveSol.marginDb.toFloat()
+                    arOverlay.naiveMarginDb = naiveSol.marginDb?.toFloat()
                 }
             }
         }
@@ -382,9 +389,7 @@ class MainActivity : AppCompatActivity(), SensorHelper.OrientationListener, Loca
                 val vOffset = arOverlay.targetElevation - pitch
                 currentOffset = Math.sqrt((hOffset * hOffset + vOffset * vOffset).toDouble()).toFloat()
 
-                Thread {
-                    alignmentTone.updateAlignment(currentOffset)
-                }.start()
+                alignmentTone.updateAlignment(currentOffset)
             }
         }
     }

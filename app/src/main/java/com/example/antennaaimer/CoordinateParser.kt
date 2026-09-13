@@ -21,6 +21,9 @@ object CoordinateParser {
         val trimmed = input.trim().uppercase()
         if (trimmed.isEmpty()) return ParseResult(0.0, false, "Empty input")
 
+        // Determine the valid axis based on negativeDirection
+        val validDirections = if (negativeDirection == 'S') setOf('N', 'S') else setOf('E', 'W')
+
         // Check for direction letter at start or end
         var cleaned = trimmed
         var negative = false
@@ -28,11 +31,18 @@ object CoordinateParser {
         // Check last character for direction
         val lastChar = cleaned.last()
         if (lastChar == 'N' || lastChar == 'S' || lastChar == 'E' || lastChar == 'W') {
+            if (lastChar !in validDirections) {
+                return ParseResult(0.0, false, "Direction '$lastChar' is not valid for this axis (expected ${validDirections.joinToString("/")})")
+            }
             negative = (lastChar == negativeDirection)
             cleaned = cleaned.dropLast(1).trim()
         }
         // Check first character for direction
         else if (cleaned.first().let { it == 'N' || it == 'S' || it == 'E' || it == 'W' }) {
+            val firstChar = cleaned.first()
+            if (firstChar !in validDirections) {
+                return ParseResult(0.0, false, "Direction '$firstChar' is not valid for this axis (expected ${validDirections.joinToString("/")})")
+            }
             negative = (cleaned.first() == negativeDirection)
             cleaned = cleaned.drop(1).trim()
         }
@@ -80,6 +90,10 @@ object CoordinateParser {
             }
         } catch (e: NumberFormatException) {
             return ParseResult(0.0, false, "Invalid number")
+        }
+
+        if (!degrees.isFinite()) {
+            return ParseResult(0.0, false, "Result is not a finite number")
         }
 
         val result = if (negative) -abs(degrees) else abs(degrees)
