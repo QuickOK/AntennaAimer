@@ -139,6 +139,48 @@
             android:background="#333333"
             android:layout_marginBottom="12dp" />
 
+        <!-- Calibration Landmark -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Calibration Landmark"
+            android:textSize="16sp"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select a saved landmark for compass calibration"
+            android:textSize="11sp"
+            android:textColor="#888888"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/selectedLandmarkText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="None (will use sun)"
+            android:textSize="14sp"
+            android:textColor="#AAAAAA"
+            android:layout_marginBottom="4dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSelectLandmark"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:text="Select Landmark"
+            android:textSize="12sp"
+            android:layout_marginBottom="16dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#333333"
+            android:layout_marginBottom="12dp" />
+
         <!-- Results -->
         <TextView
             android:id="@+id/resultsHeader"

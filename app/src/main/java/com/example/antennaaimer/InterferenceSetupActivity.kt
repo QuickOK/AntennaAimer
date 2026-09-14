@@ -33,6 +33,7 @@ class InterferenceSetupActivity : AppCompatActivity() {
 
     private var solutions: List<BoresightOptimizer.Solution> = emptyList()
     private var naiveSolution: BoresightOptimizer.Solution? = null
+    private var selectedLandmark: Landmark? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,6 +88,11 @@ class InterferenceSetupActivity : AppCompatActivity() {
         // Seed OKWIN data
         findViewById<MaterialButton>(R.id.btnSeedOkwin).setOnClickListener {
             seedOkwinData()
+        }
+
+        // Landmark selection
+        findViewById<MaterialButton>(R.id.btnSelectLandmark).setOnClickListener {
+            showLandmarkPicker()
         }
 
         // Compute
@@ -367,6 +373,30 @@ class InterferenceSetupActivity : AppCompatActivity() {
         resultsText.text = sb.toString()
     }
 
+    private fun showLandmarkPicker() {
+        val landmarks = storage.loadLandmarks()
+        if (landmarks.isEmpty()) {
+            Toast.makeText(this, "No saved landmarks. Add landmarks on the main screen first.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val names = listOf("None (use sun)") + landmarks.map { it.name }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Select Calibration Landmark")
+            .setItems(names.toTypedArray()) { _, which ->
+                if (which == 0) {
+                    selectedLandmark = null
+                    findViewById<TextView>(R.id.selectedLandmarkText).text = "None (will use sun)"
+                } else {
+                    selectedLandmark = landmarks[which - 1]
+                    val lm = landmarks[which - 1]
+                    findViewById<TextView>(R.id.selectedLandmarkText).text =
+                        "${lm.name} — ${CoordinateParser.formatLatitude(lm.latitude)}, ${CoordinateParser.formatLongitude(lm.longitude)}"
+                }
+            }
+            .show()
+    }
+
     private fun launchAimer(solution: BoresightOptimizer.Solution) {
         val wanted = sites.firstOrNull { it.role == SiteRole.WANTED } ?: return
 
@@ -413,6 +443,14 @@ class InterferenceSetupActivity : AppCompatActivity() {
             putExtra(MainActivity.EXTRA_OPTIMAL_BORESIGHT, solution.boresightTrue.toFloat())
             putExtra(MainActivity.EXTRA_GEOMETRIES_JSON, geoJson.toString())
             putExtra(MainActivity.EXTRA_PROFILE_JSON, profileJson.toString())
+
+            // Calibration landmark
+            val lm = selectedLandmark
+            if (lm != null) {
+                putExtra(TargetEntryActivity.EXTRA_CAL_LAT, lm.latitude)
+                putExtra(TargetEntryActivity.EXTRA_CAL_LON, lm.longitude)
+                putExtra(TargetEntryActivity.EXTRA_CAL_ALT, lm.totalAltitude)
+            }
         }
         startActivity(intent)
     }
