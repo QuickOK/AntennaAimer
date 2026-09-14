@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Data extraction rules for Android backup.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="antenna_targets.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="antenna_targets.xml" />
+    </device-transfer>
+</data-extraction-rules>
